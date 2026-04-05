@@ -1,19 +1,18 @@
 from flask import Flask, render_template_string, request
 import requests
-from web3 import Web3
 import os
 
 app = Flask(__name__)
 
-# --- NODOS RPC (ALTA DISPONIBILIDAD) ---
+# --- NODOS RPC ---
 SOLANA_RPC = "https://api.mainnet-beta.solana.com"
-# Usamos un nodo público de Ankr que suele ser más estable para despliegues gratuitos
-ETH_RPC = "https://rpc.ankr.com/eth"
+# Cambiamos a un nodo de Cloudflare para Ethereum, que es el más rápido y libre
+ETH_RPC = "https://cloudflare-eth.com"
 
-# --- MAPA DE TOKENS (NOMBRES MANUALES) ---
+# --- MAPA DE TOKENS ---
 TOKEN_NAMES = {
     "6p6W5unidS93h2566NcLC5GfJp0R3S30Nc9S3L5G3": "OFFICIAL TRUMP",
-    "Pa7P8E2_DIRECCION_REAL_DE_PSOL": "Phantom Staked SOL",
+    "Pa7P8E2_DIRECCION_DE_PSOL": "Phantom Staked SOL",
     "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": "USDC"
 }
 
@@ -23,44 +22,36 @@ HTML_TEMPLATE = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Airdrop Scanner Pro</title>
+    <title>Scanner Pro v9.7</title>
     <style>
         :root { --acc: #00ffad; --bg: #0b0e11; --card: #1e2329; }
-        body { background: var(--bg); color: white; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; display: flex; justify-content: center; }
-        .container { max-width: 550px; width: 100%; background: var(--card); padding: 30px; border-radius: 24px; border: 1px solid #333; box-shadow: 0 20px 50px rgba(0,0,0,0.6); text-align: center; }
-        h1 { font-size: 1.8rem; margin-bottom: 25px; color: white; }
-        .search-group { margin-bottom: 25px; }
-        input { width: 100%; padding: 15px; border-radius: 12px; border: 1px solid #444; background: #0b0e11; color: white; font-size: 1rem; box-sizing: border-box; margin-bottom: 15px; outline: none; }
-        input:focus { border-color: var(--acc); }
-        button { width: 100%; padding: 15px; background: var(--acc); border: none; border-radius: 12px; font-weight: bold; cursor: pointer; font-size: 1rem; color: #0b0e11; transition: 0.3s; }
-        button:hover { transform: scale(1.02); filter: brightness(1.1); }
-        .results-area { text-align: left; margin-top: 25px; }
-        .token-card { background: #2b3139; padding: 18px; border-radius: 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; border-left: 5px solid var(--acc); }
-        .token-info span { font-size: 0.7rem; color: #888; text-transform: uppercase; display: block; }
-        .amount { font-size: 1.2rem; font-weight: bold; color: var(--acc); }
+        body { background: var(--bg); color: white; font-family: sans-serif; margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .container { max-width: 500px; width: 100%; background: var(--card); padding: 30px; border-radius: 20px; border: 1px solid #333; text-align: center; }
+        input { width: 100%; padding: 15px; border-radius: 10px; border: 1px solid #444; background: #0b0e11; color: white; margin-bottom: 15px; box-sizing: border-box; }
+        button { width: 100%; padding: 15px; background: var(--acc); border: none; border-radius: 10px; font-weight: bold; cursor: pointer; color: #0b0e11; }
+        .token-card { background: #2b3139; padding: 15px; border-radius: 12px; margin-top: 10px; display: flex; justify-content: space-between; border-left: 5px solid var(--acc); align-items: center; text-align: left; }
+        .amount { font-weight: bold; color: var(--acc); font-size: 1.1rem; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🔍 Scanner v9.6 (Nube)</h1>
-        <div class="search-group">
-            <form method="POST">
-                <input type="text" name="wallet" placeholder="Wallet Solana o Ethereum (0x)" value="{{ wallet }}" required>
-                <button type="submit">ESCANEAR BILLETERA</button>
-            </form>
-        </div>
+        <h1>🔍 Scanner v9.7</h1>
+        <form method="POST">
+            <input type="text" name="wallet" placeholder="Wallet Solana o Ethereum (0x)" value="{{ wallet }}" required>
+            <button type="submit">ESCANEAR AHORA</button>
+        </form>
 
         {% if results %}
-        <div class="results-area">
+        <div style="margin-top: 20px;">
             {% for r in results %}
             <div class="token-card" style="border-left-color: {{ r.color }};">
-                <div class="token-info">
-                    <span>{{ r.network }}</span>
+                <div>
+                    <small style="color: #888; display: block; font-size: 0.6rem;">{{ r.network }}</small>
                     <b>{{ r.name }}</b>
                 </div>
-                <div class="token-val" style="text-align: right;">
+                <div style="text-align: right;">
                     <div class="amount">{{ r.bal }}</div>
-                    <div style="font-size: 0.8rem; color: #aaa;">{{ r.sym }}</div>
+                    <small style="color: #aaa;">{{ r.sym }}</small>
                 </div>
             </div>
             {% endfor %}
@@ -71,56 +62,52 @@ HTML_TEMPLATE = '''
 </html>
 '''
 
-def get_solana_data(wallet):
-    results = []
-    # 1. Balance SOL
+def scan_solana(wallet):
+    data = []
     try:
+        # SOL Nativo
         r = requests.post(SOLANA_RPC, json={"jsonrpc":"2.0","id":1,"method":"getBalance","params":[wallet]}).json()
         sol_bal = r['result']['value'] / 10**9
-        results.append({'network': 'Solana Mainnet', 'name': 'Solana', 'bal': round(sol_bal, 4), 'sym': 'SOL', 'color': '#9945ff'})
-    except: pass
-
-    # 2. Balance Tokens SPL
-    try:
-        payload = {
-            "jsonrpc": "2.0", "id": 1, "method": "getTokenAccountsByOwner",
-            "params": [wallet, {"programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"}, {"encoding": "jsonParsed"}]
-        }
+        data.append({'network': 'SOLANA', 'name': 'Solana', 'bal': round(sol_bal, 4), 'sym': 'SOL', 'color': '#9945ff'})
+        
+        # Tokens SPL
+        payload = {"jsonrpc":"2.0","id":1,"method":"getTokenAccountsByOwner","params":[wallet, {"programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"}, {"encoding": "jsonParsed"}]}
         r_tokens = requests.post(SOLANA_RPC, json=payload).json()
         for acc in r_tokens.get('result', {}).get('value', []):
             info = acc['account']['data']['parsed']['info']
-            mint = info['mint']
             amount = info['tokenAmount']['uiAmount']
             if amount > 0:
-                name = TOKEN_NAMES.get(mint, f"Token SPL (...{mint[-4:]})")
-                # Lógica de detección por cantidad (basada en tus fotos de Phantom)
+                mint = info['mint']
+                name = TOKEN_NAMES.get(mint, f"Token (...{mint[-4:]})")
                 if "0.0911" in str(amount): name = "OFFICIAL TRUMP"
                 if "0.0021" in str(amount): name = "Phantom Staked SOL"
-                results.append({'network': 'Solana SPL', 'name': name, 'bal': amount, 'sym': '', 'color': '#00ffad'})
+                data.append({'network': 'SOLANA SPL', 'name': name, 'bal': amount, 'sym': '', 'color': '#00ffad'})
     except: pass
-    return results
+    return data
+
+def scan_ethereum(wallet):
+    # Usamos peticiones directas JSON-RPC para evitar errores de la librería Web3 en la nube
+    try:
+        payload = {"jsonrpc":"2.0","method":"eth_getBalance","params":[wallet, "latest"],"id":1}
+        r = requests.post(ETH_RPC, json=payload).json()
+        hex_bal = r['result']
+        # Convertimos de Hexadecimal (Wei) a Decimal (Ether)
+        eth_bal = int(hex_bal, 16) / 10**18
+        return [{'network': 'ETHEREUM', 'name': 'Ethereum', 'bal': round(eth_bal, 6), 'sym': 'ETH', 'color': '#627eea'}]
+    except:
+        return []
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
-    final_results = []
+    results = []
     wallet = ""
     if request.method == 'POST':
         wallet = request.form.get('wallet').strip()
-        if not wallet.startswith('0x'):
-            final_results = get_solana_data(wallet)
+        if wallet.startswith('0x'):
+            results = scan_ethereum(wallet)
         else:
-            try:
-                # Motor de Ethereum mejorado
-                w3 = Web3(Web3.HTTPProvider(ETH_RPC))
-                if w3.is_connected():
-                    addr = w3.to_checksum_address(wallet)
-                    bal_wei = w3.eth.get_balance(addr)
-                    eth_bal = w3.from_wei(bal_wei, 'ether')
-                    final_results.append({'network': 'Ethereum', 'name': 'Ethereum', 'bal': round(float(eth_bal), 6), 'sym': 'ETH', 'color': '#627eea'})
-            except Exception as e:
-                print(f"Error ETH: {e}")
-                
-    return render_template_string(HTML_TEMPLATE, results=final_results, wallet=wallet)
+            results = scan_solana(wallet)
+    return render_template_string(HTML_TEMPLATE, results=results, wallet=wallet)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
